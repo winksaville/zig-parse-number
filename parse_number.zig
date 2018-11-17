@@ -554,6 +554,19 @@ test "ParseNumber.errors" {
     assertError(ParseNumber(u8).parse("-127"), error.NoValue);
     assertError(ParseNumber(u8).parse("-128"), error.NoValue);
     assertError(ParseNumber(u8).parse("256"), error.NoValue);
+
+    if (!DBG and !DBG1) {
+        // Only test if DBG and DBG1 are both false as u0 can't be printed
+        assertError(ParseNumber(u0).parse("1"), error.NoValue);
+    }
+
+    assertError(ParseNumber(u1).parse("2"), error.NoValue);
+    assertError(ParseNumber(u2).parse("4"), error.NoValue);
+    assertError(ParseNumber(u8).parse("256"), error.NoValue);
+
+    assertError(ParseNumber(i1).parse("1"), error.NoValue);
+    assertError(ParseNumber(i1).parse("-2"), error.NoValue);
+    assertError(ParseNumber(i1).parse("2"), error.NoValue);
 }
 
 test "ParseNumber.non-u8-sizes" {
@@ -561,6 +574,10 @@ test "ParseNumber.non-u8-sizes" {
         // Only test if DBG and DBG1 are both false as u0 can't be printed
         assert((try ParseNumber(u0).parse("0")) == 0);
     }
+
+    const parseI1 = ParseNumber(i1).parse;
+    assert((try parseI1("0")) == 0);
+    assert((try parseI1("-1")) == -1);
 
     const parseU1 = ParseNumber(u1).parse;
     assert((try parseU1("0")) == 0);
@@ -574,17 +591,6 @@ test "ParseNumber.non-u8-sizes" {
 
     assert((try ParseNumber(u127).parse("12345678901234567890")) == u127(12345678901234567890));
     assert((try ParseNumber(i127).parse("-12345678901234567890")) == i127(-12345678901234567890));
-}
-
-test "ParseNumber.non-u8-size-errors" {
-    if (!DBG and !DBG1) {
-        // Only test if DBG and DBG1 are both false as u0 can't be printed
-        assertError(ParseNumber(u0).parse("1"), error.NoValue);
-    }
-
-    assertError(ParseNumber(u1).parse("2"), error.NoValue);
-    assertError(ParseNumber(u2).parse("4"), error.NoValue);
-    assertError(ParseNumber(u8).parse("256"), error.NoValue);
 }
 
 test "ParseNumber.parseF32" {
