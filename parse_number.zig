@@ -167,17 +167,17 @@ fn parseNumber(comptime T: type, pIter: *U8Iter(), radix_val: usize) ParseResult
 
     var radix = radix_val;
     var value: u128 = 0;
-    var negative: i128 = 1;
+    var negative: bool = false;
 
     // Handle leading +, -
     if (ch == '-') {
         ch = pIter.nextChLc();
         if (DBG1) warn("PN: neg ch='{c}':0x{x}\n", ch, ch);
-        negative = -1;
+        negative = true;
     } else if (ch == '+') {
         ch = pIter.nextChLc();
         if (DBG1) warn("PN: plus ch='{c}':0x{x}\n", ch, ch);
-        negative = 1;
+        negative = false;
     }
 
     // Handle radix if not passed
@@ -244,16 +244,29 @@ fn parseNumber(comptime T: type, pIter: *U8Iter(), radix_val: usize) ParseResult
     }
     if (DBG1) warn("PN: AL value={} it={} digits={}\n", value, pIter, digits);
 
-    // We didn't have any digits don't update result
+    // Only continue if there were digits
     if (digits > 0) {
-        if (negative < 0) {
-            value = @bitCast(u128, negative *% @intCast(i128, value));
+        if (DBG1) warn("PN: digits > 0 value={}\n", value);
+        if (negative) {
+            if (DBG1) warn("PN: negative\n");
+            value = @bitCast(u128, -1 *% @intCast(i128, value));
         }
-
+        if (DBG1) warn("PN: before T.is_signed value={}\n", value);
         if (T.is_signed) {
-            result.set(@intCast(T, @intCast(i128, value) & @intCast(T, -1)), pIter.curIdx(), digits);
+            var svalue: i128 = @intCast(i128, value);
+            var smax: T = math.maxInt(T);
+            var smin: T = math.minInt(T);
+            if (DBG1) warn("PN: signed svalue={} smin={} smax={}\n", svalue, smin, smax);
+            if (svalue >= math.minInt(T) and svalue <= math.maxInt(T)) {
+                result.set(@intCast(T, @intCast(i128, value) & @intCast(T, -1)), pIter.curIdx(), digits);
+            }
         } else {
-            result.set(@intCast(T, value & math.maxInt(T)), pIter.curIdx(), digits);
+            if (DBG1) warn("PN: after T.is_signed was false value={}\n", value);
+            var umax: T = math.maxInt(T);
+            if (DBG1) warn("PN:umax={}\n", umax);
+            if (value <= math.maxInt(T)) {
+                result.set(@intCast(T, value & math.maxInt(T)), pIter.curIdx(), digits);
+            }
         }
     }
     return result;
@@ -269,6 +282,7 @@ fn parseIntegerNumber(comptime T: type, pIter: *U8Iter()) !T {
     result = parseNumber(T, pIter, 0);
 
     if (!result.value_set) {
+        if (DBG) warn("PIN: error no value\n");
         return error.NoValue;
     }
 
@@ -318,6 +332,7 @@ fn parseFloatNumber(comptime T: type, pIter: *U8Iter()) !T {
         if (DBG1) warn("PFN:-- pr.value={}\n", pr.value);
         return pr.value;
     }
+    if (DBG) warn("PFN: error no value\n");
     return error.NoValue;
 }
 
@@ -472,18 +487,13 @@ test "ParseNumber" {
 
     assert((try ParseNumber(u8).parse("0d0")) == 0);
     assert((try ParseNumber(u8).parse("0d1")) == 1);
-    assert((try ParseNumber(u8).parse("-0d1")) == 255);
     assert((try ParseNumber(i8).parse("-0d1")) == -1);
     assert((try ParseNumber(i8).parse("+0d1")) == 1);
     assert((try ParseNumber(u8).parse("0d9")) == 9);
     assert((try ParseNumber(u8).parse("0")) == 0);
-    assert((try ParseNumber(u8).parse("-1")) == 255);
     assert((try ParseNumber(u8).parse("9")) == 9);
     assert((try ParseNumber(u8).parse("127")) == 0x7F);
-    assert((try ParseNumber(u8).parse("-127")) == 0x81);
-    assert((try ParseNumber(u8).parse("-128")) == 0x80);
     assert((try ParseNumber(u8).parse("255")) == 255);
-    assert((try ParseNumber(u8).parse("256")) == 0);
     assert((try ParseNumber(u64).parse("123_456_789")) == 123456789);
 
     assert((try ParseNumber(u8).parse("0x0")) == 0x0);
@@ -536,6 +546,45 @@ fn floatFuzzyEql(comptime T: type, lhs: T, rhs: T, fuz: T) bool {
     }
     if (DBG1) warn("smaller={} larger={}\n", smaller, larger);
     return smaller >= larger;
+}
+
+test "ParseNumber.errors" {
+    assertError(ParseNumber(u8).parse("-0d1"), error.NoValue);
+    assertError(ParseNumber(u8).parse("-1"), error.NoValue);
+    assertError(ParseNumber(u8).parse("-127"), error.NoValue);
+    assertError(ParseNumber(u8).parse("-128"), error.NoValue);
+    assertError(ParseNumber(u8).parse("256"), error.NoValue);
+}
+
+test "ParseNumber.non-u8-sizes" {
+    if (!DBG and !DBG1) {
+        // Only test if DBG and DBG1 are both false as u0 can't be printed
+        assert((try ParseNumber(u0).parse("0")) == 0);
+    }
+
+    const parseU1 = ParseNumber(u1).parse;
+    assert((try parseU1("0")) == 0);
+    assert((try parseU1("1")) == 1);
+
+    const parseU2 = ParseNumber(u2).parse;
+    assert((try parseU2("0")) == 0);
+    assert((try parseU2("1")) == 1);
+    assert((try parseU2("2")) == 2);
+    assert((try parseU2("3")) == 3);
+
+    assert((try ParseNumber(u127).parse("12345678901234567890")) == u127(12345678901234567890));
+    assert((try ParseNumber(i127).parse("-12345678901234567890")) == i127(-12345678901234567890));
+}
+
+test "ParseNumber.non-u8-size-errors" {
+    if (!DBG and !DBG1) {
+        // Only test if DBG and DBG1 are both false as u0 can't be printed
+        assertError(ParseNumber(u0).parse("1"), error.NoValue);
+    }
+
+    assertError(ParseNumber(u1).parse("2"), error.NoValue);
+    assertError(ParseNumber(u2).parse("4"), error.NoValue);
+    assertError(ParseNumber(u8).parse("256"), error.NoValue);
 }
 
 test "ParseNumber.parseF32" {
