@@ -70,7 +70,7 @@ fn U8Iter() type {
         pub fn peekPrevCh(pSelf: *Self) u8 {
             var idx = if (pSelf.idx > pSelf.initial_idx) pSelf.idx - 1 else pSelf.idx;
             if (pSelf.done()) return 0;
-            return pSelf.str[pSelf.idx];
+            return pSelf.str[idx];
         }
 
         // Next character or 0 if end of string
@@ -84,7 +84,7 @@ fn U8Iter() type {
         // Prev character or first character or if string is empty 0
         pub fn prevCh(pSelf: *Self) u8 {
             if (pSelf.idx > pSelf.initial_idx) pSelf.idx -= 1;
-            return pSelf.peekNextCh();
+            return pSelf.peekPrevCh();
         }
 
         // Next character skipping white space characters or 0 if end of string
@@ -159,7 +159,6 @@ fn ParseResult(comptime T: type) type {
 fn parseNumber(comptime T: type, pIter: *U8Iter(), radix_val: usize) ParseResult(T) {
     var result = ParseResult(T).init();
     pIter.initial_idx = pIter.idx;
-    //var ch = pIter.curChLc();
     var ch = pIter.nextChLc();
 
     if (DBG) warn("PN:+  pr={}, it={} ch='{c}':0x{x}\n", result, pIter, ch, ch);
@@ -292,9 +291,15 @@ fn parseIntegerNumber(comptime T: type, pIter: *U8Iter()) !T {
 fn parseFloatNumber(comptime T: type, pIter: *U8Iter()) !T {
     var ch = pIter.skipWs();
     var pr = ParseResult(T).init();
+    var negative: T = 1;
 
     if (DBG) warn("PFN:+ pr={} it={} ch='{c}':0x{x}\n", pr, pIter, ch, ch);
     defer if (DBG) warn("PFN:- pr={} it={} ch='{c}':0x{x}\n", pr, pIter, ch, ch);
+
+    if (ch == '-') {
+        negative = -1;
+        ch = pIter.nextChLc();
+    }
 
     // Get Tens
     var pr_tens = parseNumber(i128, pIter, 10);
@@ -307,7 +312,7 @@ fn parseFloatNumber(comptime T: type, pIter: *U8Iter()) !T {
             pIter.next();
             pr_fraction = parseNumber(i128, pIter, 10);
             if (!pr_fraction.value_set) {
-                if (DBG1) warn("PF: no fraction\n");
+                if (DBG1) warn("PFN: no fraction\n");
                 pr_fraction.set(0, pIter.idx, 0);
             }
         }
@@ -317,7 +322,7 @@ fn parseFloatNumber(comptime T: type, pIter: *U8Iter()) !T {
             pIter.next(); // skip e
             pr_exponent = parseNumber(i128, pIter, 10);
             if (!pr_exponent.value_set) {
-                if (DBG1) warn("PF: no exponent\n");
+                if (DBG1) warn("PFN: no exponent\n");
                 pr_exponent.set(0, pIter.idx, 0);
             }
         }
@@ -326,10 +331,10 @@ fn parseFloatNumber(comptime T: type, pIter: *U8Iter()) !T {
         var tens = @intToFloat(T, pr_tens.value);
         var fraction = @intToFloat(T, pr_fraction.value) / std.math.pow(T, 10, @intToFloat(T, pr_fraction.digits));
         var significand: T = if (pr_tens.value >= 0) tens + fraction else tens - fraction;
-        var value = significand * std.math.pow(T, @intToFloat(T, 10), @intToFloat(T, pr_exponent.value));
+        var value = negative * significand * std.math.pow(T, @intToFloat(T, 10), @intToFloat(T, pr_exponent.value));
         pr.set(value, pIter.idx, pr_tens.digits + pr_fraction.digits);
 
-        if (DBG1) warn("PFN:-- pr.value={}\n", pr.value);
+        if (DBG1) warn("PFN: pr.value={}\n", pr.value);
         return pr.value;
     }
     if (DBG) warn("PFN: error no value\n");
@@ -461,6 +466,7 @@ test "ParseNumber" {
     assertError(ParseNumber(u8).parse(""), error.NoValue);
 
     assert((try ParseNumber(u8).parse("0")) == 0);
+    assert((try ParseNumber(u8).parse("00")) == 0);
     assert((try ParseNumber(u8).parse(" 1")) == 1);
     assert((try ParseNumber(u8).parse(" 2 ")) == 2);
     assertError(ParseNumber(u8).parse(" 2d"), error.NoValue);
@@ -472,6 +478,10 @@ test "ParseNumber" {
     assert((try ParseNumber(i8).parse("-1")) == -1);
     assert((try ParseNumber(i8).parse("1")) == 1);
     assert((try ParseNumber(i8).parse("+1")) == 1);
+    assert((try ParseNumber(i8).parse("01")) == 1);
+    assert((try ParseNumber(i8).parse("001")) == 1);
+    assert((try ParseNumber(i8).parse("-01")) == -1);
+    assert((try ParseNumber(i8).parse("-001")) == -1);
 
     assert((try ParseNumber(u8).parse("0b0")) == 0);
     assert((try ParseNumber(u8).parse("0b1")) == 1);
@@ -523,10 +533,12 @@ test "ParseNumber" {
     assert((try ParseNumber(f32).parse("1e0")) == 1);
     assert((try ParseNumber(f32).parse("1e1")) == 10);
     assert((try ParseNumber(f32).parse("1e-1")) == 0.1);
+    assert((try ParseNumber(f32).parse("-0.75780")) == -0.75780);
     assert((try ParseNumber(f64).parse("0.1")) == 0.1);
     assert((try ParseNumber(f64).parse("-1.")) == -1.0);
     assert((try ParseNumber(f64).parse("-2.1")) == -2.1);
     assert((try ParseNumber(f64).parse("-1.2")) == -1.2);
+    assert((try ParseNumber(f64).parse("-00.75780")) == -0.75780);
     assert(floatFuzzyEql(f64, try ParseNumber(f64).parse("1.2e2"), 1.2e2, 0.00001));
     assert(floatFuzzyEql(f64, try ParseNumber(f64).parse("-1.2e-2"), -1.2e-2, 0.00001));
 }
@@ -556,28 +568,28 @@ test "ParseNumber.errors" {
     assertError(ParseNumber(u8).parse("256"), error.NoValue);
 
     if (!DBG and !DBG1) {
-        // Only test if DBG and DBG1 are both false as u0 can't be printed
+        // Only test if DBG and DBG1 are both false as u0/i1 can't be printed
         assertError(ParseNumber(u0).parse("1"), error.NoValue);
+        assertError(ParseNumber(i1).parse("1"), error.NoValue);
+        assertError(ParseNumber(i1).parse("-2"), error.NoValue);
+        assertError(ParseNumber(i1).parse("2"), error.NoValue);
     }
 
     assertError(ParseNumber(u1).parse("2"), error.NoValue);
     assertError(ParseNumber(u2).parse("4"), error.NoValue);
     assertError(ParseNumber(u8).parse("256"), error.NoValue);
-
-    assertError(ParseNumber(i1).parse("1"), error.NoValue);
-    assertError(ParseNumber(i1).parse("-2"), error.NoValue);
-    assertError(ParseNumber(i1).parse("2"), error.NoValue);
 }
 
 test "ParseNumber.non-u8-sizes" {
     if (!DBG and !DBG1) {
-        // Only test if DBG and DBG1 are both false as u0 can't be printed
+        // Only test if DBG and DBG1 are both false as u0/u1 can't be printed
         assert((try ParseNumber(u0).parse("0")) == 0);
+
+        const parseI1 = ParseNumber(i1).parse;
+        assert((try parseI1("0")) == 0);
+        assert((try parseI1("-1")) == -1);
     }
 
-    const parseI1 = ParseNumber(i1).parse;
-    assert((try parseI1("0")) == 0);
-    assert((try parseI1("-1")) == -1);
 
     const parseU1 = ParseNumber(u1).parse;
     assert((try parseU1("0")) == 0);
