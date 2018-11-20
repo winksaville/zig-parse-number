@@ -610,3 +610,19 @@ test "ParseNumber.parseF32" {
     var vf32 = try parseF32("123.e4");
     assert(vf32 == f32(123e4));
 }
+
+test "ParseNumber.leading.zeros" {
+    const parseF32 = ParseNumber(f32).parse;
+    assert((try parseF32("01")) == 1);
+    assert((try parseF32("001.001e001")) == 1.001e001);
+    assert((try parseF32("-01")) == -1);
+    assert((try parseF32("-001.001e-001")) == -1.001e-001);
+}
+
+test "ParseNumber.no.leading.digit" {
+    // TODO: Should we allow this
+    const parseF32 = ParseNumber(f32).parse;
+    // assert((try parseF32("0.1")) == f32(.1)); // Zig compiler error
+    assertError(parseF32(".1"), error.NoValue);
+    assertError(parseF32("-.1"), error.NoValue);
+}
