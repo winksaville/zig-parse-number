@@ -626,3 +626,11 @@ test "ParseNumber.no.leading.digit" {
     assertError(parseF32(".1"), error.NoValue);
     assertError(parseF32("-.1"), error.NoValue);
 }
+
+test "ParseNumber.trailing.decimal" {
+    const parseF32 = ParseNumber(f32).parse;
+    assert((try parseF32("0.")) == f32(0.));
+    assert((try parseF32("-0.")) == f32(-0.));
+    assert((try parseF32("1.")) == f32(1.));
+    assert((try parseF32("-1.")) == f32(-1.));
+}
