@@ -12,6 +12,52 @@ const TypeId = builtin.TypeId;
 const DBG = false;
 const DBG1 = false;
 
+/// `bytes` is a utf-8 encoded string
+pub fn parseFloat(comptime T: type, bytes: []const u8) !T {
+    switch (TypeId(@typeInfo(T))) {
+        TypeId.Float => return ParseNumber(T).parse(bytes),
+        else => @compileError("Expecting Float"),
+    }
+}
+
+test "ParseNumber.parseFloat" {
+    assert((try parseFloat(f64, "-1.000_001e10")) == -1.000001e10);
+    assert((try parseFloat(f32, "0.1")) == 0.1);
+
+    // Couple of examples using ParseNumber directly
+    assert((try ParseNumber(i32).parse("0x1234_ABCD")) == 0x1234ABCD);
+    const parseF32 = ParseNumber(f32).parse;
+    assert((try parseF32("-1.0")) == -1.0);
+}
+
+/// The returned struct has a parse member
+/// that takes a slice and returns a T.
+pub fn ParseNumber(comptime T: type) type {
+    return struct {
+        const Self = @This();
+
+        fn parse(str: []const u8) !T {
+            if (DBG) warn("ParseNumber:+ str={}\n", str);
+
+            var it: U8Iter() = undefined;
+            it.set(str, 0);
+
+            var result = try switch (TypeId(@typeInfo(T))) {
+                TypeId.Int => parseIntegerNumber(T, &it),
+                TypeId.Float => parseFloatNumber(T, &it),
+                else => @compileError("Expecting Int or Float"),
+            };
+
+            // Skip any trailing WS and if we didn't conusme the entire string it's an error
+            _ = it.skipWs();
+            if (it.idx < str.len) return error.NoValue;
+
+            if (DBG) warn("ParseNumber:- str={} result={}\n", str, result);
+            return result;
+        }
+    };
+}
+
 fn toLower(ch: u8) u8 {
     return if ((ch >= 'A') and (ch <= 'Z')) ch + ('a' - 'A') else ch;
 }
@@ -339,34 +385,6 @@ fn parseFloatNumber(comptime T: type, pIter: *U8Iter()) !T {
     }
     if (DBG) warn("PFN: error no value\n");
     return error.NoValue;
-}
-
-/// The returned struct has a parse member
-/// that takes a slice and returns a T.
-pub fn ParseNumber(comptime T: type) type {
-    return struct {
-        const Self = @This();
-
-        fn parse(str: []const u8) !T {
-            if (DBG) warn("ParseNumber:+ str={}\n", str);
-
-            var it: U8Iter() = undefined;
-            it.set(str, 0);
-
-            var result = try switch (TypeId(@typeInfo(T))) {
-                TypeId.Int => parseIntegerNumber(T, &it),
-                TypeId.Float => parseFloatNumber(T, &it),
-                else => @compileError("Expecting Int or Float only"),
-            };
-
-            // Skip any trailing WS and if we didn't conusme the entire string it's an error
-            _ = it.skipWs();
-            if (it.idx < str.len) return error.NoValue;
-
-            if (DBG) warn("ParseNumber:- str={} result={}\n", str, result);
-            return result;
-        }
-    };
 }
 
 test "ParseNumber.parseIntegerNumber" {
