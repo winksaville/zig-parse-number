@@ -1,7 +1,8 @@
 const std = @import("std");
 const debug = std.debug;
-const assert = debug.assert;
-const assertError = debug.assertError;
+const testing = std.testing;
+const expect = testing.expect;
+const expectError = testing.expectError;
 const warn = debug.warn;
 const mem = std.mem;
 const math = std.math;
@@ -13,7 +14,7 @@ const DBG = false;
 const DBG1 = false;
 
 /// `bytes` is a utf-8 encoded string
-pub fn parseFloat(comptime T: type, bytes: []const u8) !T {
+pub fn parseFloat(comptime T: type, bytes: []const u8) anyerror!T {
     switch (TypeId(@typeInfo(T))) {
         TypeId.Float => return ParseNumber(T).parse(bytes),
         else => @compileError("Expecting Float"),
@@ -21,13 +22,13 @@ pub fn parseFloat(comptime T: type, bytes: []const u8) !T {
 }
 
 test "ParseNumber.parseFloat" {
-    assert((try parseFloat(f64, "-1.000_001e10")) == -1.000001e10);
-    assert((try parseFloat(f32, "0.1")) == 0.1);
+    expect((try parseFloat(f64, "-1.000_001e10")) == -1.000001e10);
+    expect((try parseFloat(f32, "0.1")) == 0.1);
 
     // Couple of examples using ParseNumber directly
-    assert((try ParseNumber(i32).parse("0x1234_ABCD")) == 0x1234ABCD);
+    expect((try ParseNumber(i32).parse("0x1234_ABCD")) == 0x1234ABCD);
     const parseF32 = ParseNumber(f32).parse;
-    assert((try parseF32("-1.0")) == -1.0);
+    expect((try parseF32("-1.0")) == -1.0);
 }
 
 /// The returned struct has a parse member
@@ -36,7 +37,7 @@ pub fn ParseNumber(comptime T: type) type {
     return struct {
         const Self = @This();
 
-        fn parse(str: []const u8) !T {
+        pub fn parse(str: []const u8) anyerror!T {
             if (DBG) warn("ParseNumber:+ str={}\n", str);
 
             var it: U8Iter() = undefined;
@@ -317,7 +318,7 @@ fn parseNumber(comptime T: type, pIter: *U8Iter(), radix_val: usize) ParseResult
     return result;
 }
 
-fn parseIntegerNumber(comptime T: type, pIter: *U8Iter()) !T {
+fn parseIntegerNumber(comptime T: type, pIter: *U8Iter()) anyerror!T {
     var result = ParseResult(T).init();
     var ch = pIter.skipWs();
 
@@ -334,7 +335,7 @@ fn parseIntegerNumber(comptime T: type, pIter: *U8Iter()) !T {
     return result.value;
 }
 
-fn parseFloatNumber(comptime T: type, pIter: *U8Iter()) !T {
+fn parseFloatNumber(comptime T: type, pIter: *U8Iter()) anyerror!T {
     var ch = pIter.skipWs();
     var pr = ParseResult(T).init();
     var negative: T = 1;
@@ -392,42 +393,42 @@ test "ParseNumber.parseIntegerNumber" {
     var it: U8Iter() = undefined;
 
     it.set("", 0);
-    assertError(parseIntegerNumber(u8, &it), error.NoValue);
+    expectError(error.NoValue, parseIntegerNumber(u8, &it));
 
     it.set("0", 0);
     var vU8 = try parseIntegerNumber(u8, &it);
-    assert(vU8 == 0);
-    assert(it.idx == 1);
+    expect(vU8 == 0);
+    expect(it.idx == 1);
 
     it.set("1 2", 0);
     vU8 = try parseIntegerNumber(u8, &it);
     if (DBG) warn("vU8={} it={}\n", vU8, it);
-    assert(vU8 == 1);
-    assert(it.idx == 1);
+    expect(vU8 == 1);
+    expect(it.idx == 1);
     vU8 = try parseIntegerNumber(u8, &it);
     if (DBG) warn("vU8={} it={}\n", vU8, it);
-    assert(vU8 == 2);
-    assert(it.idx == 3);
+    expect(vU8 == 2);
+    expect(it.idx == 3);
 
     it.set("\t0", 0);
     vU8 = try parseIntegerNumber(u8, &it);
-    assert(vU8 == 0);
-    assert(it.idx == 2);
+    expect(vU8 == 0);
+    expect(it.idx == 2);
 
     it.set(" \t0", 0);
     vU8 = try parseIntegerNumber(u8, &it);
-    assert(vU8 == 0);
-    assert(it.idx == 3);
+    expect(vU8 == 0);
+    expect(it.idx == 3);
 
     it.set(" \t 0", 0);
     vU8 = try parseIntegerNumber(u8, &it);
-    assert(vU8 == 0);
-    assert(it.idx == 4);
+    expect(vU8 == 0);
+    expect(it.idx == 4);
 
     it.set("1.", 0);
     vU8 = try parseIntegerNumber(u8, &it);
-    assert(vU8 == 1);
-    assert(it.idx == 1);
+    expect(vU8 == 1);
+    expect(it.idx == 1);
 }
 
 test "ParseNumber.parseFloatNumber" {
@@ -437,128 +438,128 @@ test "ParseNumber.parseFloatNumber" {
     var vF32: f32 = undefined;
 
     it.set("", 0);
-    assertError(parseFloatNumber(f32, &it), error.NoValue);
+    expectError(error.NoValue, parseFloatNumber(f32, &it));
 
     it.set("0", 0);
     vF32 = try parseFloatNumber(f32, &it);
-    assert(vF32 == 0);
-    assert(it.idx == 1);
+    expect(vF32 == 0);
+    expect(it.idx == 1);
 
     it.set("1", 0);
     vF32 = try parseFloatNumber(f32, &it);
-    assert(vF32 == 1);
-    assert(it.idx == 1);
+    expect(vF32 == 1);
+    expect(it.idx == 1);
 
     it.set("+1", 0);
     vF32 = try parseFloatNumber(f32, &it);
-    assert(vF32 == 1);
-    assert(it.idx == 2);
+    expect(vF32 == 1);
+    expect(it.idx == 2);
 
     it.set("-1", 0);
     vF32 = try parseFloatNumber(f32, &it);
-    assert(vF32 == -1);
-    assert(it.idx == 2);
+    expect(vF32 == -1);
+    expect(it.idx == 2);
 
     it.set("1.2", 0);
     vF32 = try parseFloatNumber(f32, &it);
-    assert(vF32 == 1.2);
-    assert(it.idx == 3);
+    expect(vF32 == 1.2);
+    expect(it.idx == 3);
 
     it.set("1e1", 0);
     vF32 = try parseFloatNumber(f32, &it);
-    assert(vF32 == 10);
-    assert(it.idx == 3);
+    expect(vF32 == 10);
+    expect(it.idx == 3);
 
     it.set("1.2 3.4", 0);
     vF32 = try parseFloatNumber(f32, &it);
     if (DBG) warn("vF32={} it={}\n", vF32, it);
-    assert(vF32 == 1.2);
-    assert(it.idx == 3);
+    expect(vF32 == 1.2);
+    expect(it.idx == 3);
     vF32 = try parseFloatNumber(f32, &it);
     if (DBG) warn("vF32={} it={}\n", vF32, it);
-    assert(vF32 == 3.4);
-    assert(it.idx == 7);
+    expect(vF32 == 3.4);
+    expect(it.idx == 7);
 }
 
 test "ParseNumber" {
-    assertError(ParseNumber(u8).parse(""), error.NoValue);
+    expectError(error.NoValue, ParseNumber(u8).parse(""));
 
-    assert((try ParseNumber(u8).parse("0")) == 0);
-    assert((try ParseNumber(u8).parse("00")) == 0);
-    assert((try ParseNumber(u8).parse(" 1")) == 1);
-    assert((try ParseNumber(u8).parse(" 2 ")) == 2);
-    assertError(ParseNumber(u8).parse(" 2d"), error.NoValue);
+    expect((try ParseNumber(u8).parse("0")) == 0);
+    expect((try ParseNumber(u8).parse("00")) == 0);
+    expect((try ParseNumber(u8).parse(" 1")) == 1);
+    expect((try ParseNumber(u8).parse(" 2 ")) == 2);
+    expectError(error.NoValue, ParseNumber(u8).parse(" 2d"));
 
     const s = " \t 123\t";
     var slice = s[0..];
-    assert((try ParseNumber(u8).parse(slice)) == 123);
+    expect((try ParseNumber(u8).parse(slice)) == 123);
 
-    assert((try ParseNumber(i8).parse("-1")) == -1);
-    assert((try ParseNumber(i8).parse("1")) == 1);
-    assert((try ParseNumber(i8).parse("+1")) == 1);
-    assert((try ParseNumber(i8).parse("01")) == 1);
-    assert((try ParseNumber(i8).parse("001")) == 1);
-    assert((try ParseNumber(i8).parse("-01")) == -1);
-    assert((try ParseNumber(i8).parse("-001")) == -1);
+    expect((try ParseNumber(i8).parse("-1")) == -1);
+    expect((try ParseNumber(i8).parse("1")) == 1);
+    expect((try ParseNumber(i8).parse("+1")) == 1);
+    expect((try ParseNumber(i8).parse("01")) == 1);
+    expect((try ParseNumber(i8).parse("001")) == 1);
+    expect((try ParseNumber(i8).parse("-01")) == -1);
+    expect((try ParseNumber(i8).parse("-001")) == -1);
 
-    assert((try ParseNumber(u8).parse("0b0")) == 0);
-    assert((try ParseNumber(u8).parse("0b1")) == 1);
-    assert((try ParseNumber(u8).parse("0b1010_0101")) == 0xA5);
-    assertError(ParseNumber(u8).parse("0b2"), error.NoValue);
+    expect((try ParseNumber(u8).parse("0b0")) == 0);
+    expect((try ParseNumber(u8).parse("0b1")) == 1);
+    expect((try ParseNumber(u8).parse("0b1010_0101")) == 0xA5);
+    expectError(error.NoValue, ParseNumber(u8).parse("0b2"));
 
-    assert((try ParseNumber(u8).parse("0o0")) == 0);
-    assert((try ParseNumber(u8).parse("0o1")) == 1);
-    assert((try ParseNumber(u8).parse("0o7")) == 7);
-    assert((try ParseNumber(u8).parse("0o77")) == 0x3f);
-    assert((try ParseNumber(u32).parse("0o111_777")) == 0b1001001111111111);
-    assertError(ParseNumber(u8).parse("0b8"), error.NoValue);
+    expect((try ParseNumber(u8).parse("0o0")) == 0);
+    expect((try ParseNumber(u8).parse("0o1")) == 1);
+    expect((try ParseNumber(u8).parse("0o7")) == 7);
+    expect((try ParseNumber(u8).parse("0o77")) == 0x3f);
+    expect((try ParseNumber(u32).parse("0o111_777")) == 0b1001001111111111);
+    expectError(error.NoValue, ParseNumber(u8).parse("0b8"));
 
-    assert((try ParseNumber(u8).parse("0d0")) == 0);
-    assert((try ParseNumber(u8).parse("0d1")) == 1);
-    assert((try ParseNumber(i8).parse("-0d1")) == -1);
-    assert((try ParseNumber(i8).parse("+0d1")) == 1);
-    assert((try ParseNumber(u8).parse("0d9")) == 9);
-    assert((try ParseNumber(u8).parse("0")) == 0);
-    assert((try ParseNumber(u8).parse("9")) == 9);
-    assert((try ParseNumber(u8).parse("127")) == 0x7F);
-    assert((try ParseNumber(u8).parse("255")) == 255);
-    assert((try ParseNumber(u64).parse("123_456_789")) == 123456789);
+    expect((try ParseNumber(u8).parse("0d0")) == 0);
+    expect((try ParseNumber(u8).parse("0d1")) == 1);
+    expect((try ParseNumber(i8).parse("-0d1")) == -1);
+    expect((try ParseNumber(i8).parse("+0d1")) == 1);
+    expect((try ParseNumber(u8).parse("0d9")) == 9);
+    expect((try ParseNumber(u8).parse("0")) == 0);
+    expect((try ParseNumber(u8).parse("9")) == 9);
+    expect((try ParseNumber(u8).parse("127")) == 0x7F);
+    expect((try ParseNumber(u8).parse("255")) == 255);
+    expect((try ParseNumber(u64).parse("123_456_789")) == 123456789);
 
-    assert((try ParseNumber(u8).parse("0x0")) == 0x0);
-    assert((try ParseNumber(u8).parse("0x1")) == 0x1);
-    assert((try ParseNumber(u8).parse("0x9")) == 0x9);
-    assert((try ParseNumber(u8).parse("0xa")) == 0xa);
-    assert((try ParseNumber(u8).parse("0xf")) == 0xf);
+    expect((try ParseNumber(u8).parse("0x0")) == 0x0);
+    expect((try ParseNumber(u8).parse("0x1")) == 0x1);
+    expect((try ParseNumber(u8).parse("0x9")) == 0x9);
+    expect((try ParseNumber(u8).parse("0xa")) == 0xa);
+    expect((try ParseNumber(u8).parse("0xf")) == 0xf);
 
-    assert((try ParseNumber(i128).parse("-170141183460469231731687303715884105728")) == @bitCast(i128, @intCast(u128, 0x80000000000000000000000000000000)));
-    assert((try ParseNumber(i128).parse("-170141183460469231731687303715884105727")) == @bitCast(i128, @intCast(u128, 0x80000000000000000000000000000001)));
-    assert((try ParseNumber(i128).parse("-1")) == @bitCast(i128, @intCast(u128, 0xffffffffffffffffffffffffffffffff)));
-    assert((try ParseNumber(i128).parse("0")) == @bitCast(i128, @intCast(u128, 0x00000000000000000000000000000000)));
-    assert((try ParseNumber(i128).parse("170141183460469231731687303715884105726")) == @bitCast(i128, @intCast(u128, 0x7ffffffffffffffffffffffffffffffe)));
-    assert((try ParseNumber(i128).parse("170141183460469231731687303715884105727")) == @bitCast(i128, @intCast(u128, 0x7fffffffffffffffffffffffffffffff)));
+    expect((try ParseNumber(i128).parse("-170141183460469231731687303715884105728")) == @bitCast(i128, @intCast(u128, 0x80000000000000000000000000000000)));
+    expect((try ParseNumber(i128).parse("-170141183460469231731687303715884105727")) == @bitCast(i128, @intCast(u128, 0x80000000000000000000000000000001)));
+    expect((try ParseNumber(i128).parse("-1")) == @bitCast(i128, @intCast(u128, 0xffffffffffffffffffffffffffffffff)));
+    expect((try ParseNumber(i128).parse("0")) == @bitCast(i128, @intCast(u128, 0x00000000000000000000000000000000)));
+    expect((try ParseNumber(i128).parse("170141183460469231731687303715884105726")) == @bitCast(i128, @intCast(u128, 0x7ffffffffffffffffffffffffffffffe)));
+    expect((try ParseNumber(i128).parse("170141183460469231731687303715884105727")) == @bitCast(i128, @intCast(u128, 0x7fffffffffffffffffffffffffffffff)));
 
-    assert((try ParseNumber(u128).parse("0")) == 0);
-    assert((try ParseNumber(u128).parse("1")) == 1);
-    assert((try ParseNumber(u128).parse("340282366920938463463374607431768211454")) == 0xfffffffffffffffffffffffffffffffe);
-    assert((try ParseNumber(u128).parse("340282366920938463463374607431768211455")) == 0xffffffffffffffffffffffffffffffff);
+    expect((try ParseNumber(u128).parse("0")) == 0);
+    expect((try ParseNumber(u128).parse("1")) == 1);
+    expect((try ParseNumber(u128).parse("340282366920938463463374607431768211454")) == 0xfffffffffffffffffffffffffffffffe);
+    expect((try ParseNumber(u128).parse("340282366920938463463374607431768211455")) == 0xffffffffffffffffffffffffffffffff);
 
-    assert((try ParseNumber(u128).parse("0x1234_5678_9ABc_Def0_0FEd_Cba9_8765_4321")) == 0x123456789ABcDef00FEdCba987654321);
-    assertError(ParseNumber(u8).parse("0xg"), error.NoValue);
+    expect((try ParseNumber(u128).parse("0x1234_5678_9ABc_Def0_0FEd_Cba9_8765_4321")) == 0x123456789ABcDef00FEdCba987654321);
+    expectError(error.NoValue, ParseNumber(u8).parse("0xg"));
 
-    assert((try ParseNumber(f32).parse("0")) == 0);
-    assert((try ParseNumber(f32).parse("-1")) == -1);
-    assert((try ParseNumber(f32).parse("1.")) == 1.0);
-    assert((try ParseNumber(f32).parse("1e0")) == 1);
-    assert((try ParseNumber(f32).parse("1e1")) == 10);
-    assert((try ParseNumber(f32).parse("1e-1")) == 0.1);
-    assert((try ParseNumber(f32).parse("-0.75780")) == -0.75780);
-    assert((try ParseNumber(f64).parse("0.1")) == 0.1);
-    assert((try ParseNumber(f64).parse("-1.")) == -1.0);
-    assert((try ParseNumber(f64).parse("-2.1")) == -2.1);
-    assert((try ParseNumber(f64).parse("-1.2")) == -1.2);
-    assert((try ParseNumber(f64).parse("-00.75780")) == -0.75780);
-    assert(floatFuzzyEql(f64, try ParseNumber(f64).parse("1.2e2"), 1.2e2, 0.00001));
-    assert(floatFuzzyEql(f64, try ParseNumber(f64).parse("-1.2e-2"), -1.2e-2, 0.00001));
+    expect((try ParseNumber(f32).parse("0")) == 0);
+    expect((try ParseNumber(f32).parse("-1")) == -1);
+    expect((try ParseNumber(f32).parse("1.")) == 1.0);
+    expect((try ParseNumber(f32).parse("1e0")) == 1);
+    expect((try ParseNumber(f32).parse("1e1")) == 10);
+    expect((try ParseNumber(f32).parse("1e-1")) == 0.1);
+    expect((try ParseNumber(f32).parse("-0.75780")) == -0.75780);
+    expect((try ParseNumber(f64).parse("0.1")) == 0.1);
+    expect((try ParseNumber(f64).parse("-1.")) == -1.0);
+    expect((try ParseNumber(f64).parse("-2.1")) == -2.1);
+    expect((try ParseNumber(f64).parse("-1.2")) == -1.2);
+    expect((try ParseNumber(f64).parse("-00.75780")) == -0.75780);
+    expect(floatFuzzyEql(f64, try ParseNumber(f64).parse("1.2e2"), 1.2e2, 0.00001));
+    expect(floatFuzzyEql(f64, try ParseNumber(f64).parse("-1.2e-2"), -1.2e-2, 0.00001));
 }
 
 fn floatFuzzyEql(comptime T: type, lhs: T, rhs: T, fuz: T) bool {
@@ -579,76 +580,77 @@ fn floatFuzzyEql(comptime T: type, lhs: T, rhs: T, fuz: T) bool {
 }
 
 test "ParseNumber.errors" {
-    assertError(ParseNumber(u8).parse("-0d1"), error.NoValue);
-    assertError(ParseNumber(u8).parse("-1"), error.NoValue);
-    assertError(ParseNumber(u8).parse("-127"), error.NoValue);
-    assertError(ParseNumber(u8).parse("-128"), error.NoValue);
-    assertError(ParseNumber(u8).parse("256"), error.NoValue);
+    expectError(error.NoValue, ParseNumber(u8).parse("-0d1"));
+    expectError(error.NoValue, ParseNumber(u8).parse("-1"));
+    expectError(error.NoValue, ParseNumber(u8).parse("-127"));
+    expectError(error.NoValue, ParseNumber(u8).parse("-128"));
+    expectError(error.NoValue, ParseNumber(u8).parse("256"));
 
     if (!DBG and !DBG1) {
         // Only test if DBG and DBG1 are both false as u0/i1 can't be printed
-        assertError(ParseNumber(u0).parse("1"), error.NoValue);
-        assertError(ParseNumber(i1).parse("1"), error.NoValue);
-        assertError(ParseNumber(i1).parse("-2"), error.NoValue);
-        assertError(ParseNumber(i1).parse("2"), error.NoValue);
+        expectError(error.NoValue, ParseNumber(u0).parse("1"));
+
+        // Causes error:
+        // /home/wink/opt/lib/zig/std/fmt.zig:715:52: error: integer value 1 cannot be implicitly casted to type 'i1'
+        //         const new_value = @intCast(uint, -(value + 1)) + 1;
+        //expectError(error.NoValue, ParseNumber(i1).parse("1"));
     }
 
-    assertError(ParseNumber(u1).parse("2"), error.NoValue);
-    assertError(ParseNumber(u2).parse("4"), error.NoValue);
-    assertError(ParseNumber(u8).parse("256"), error.NoValue);
+    expectError(error.NoValue, ParseNumber(u1).parse("2"));
+    expectError(error.NoValue, ParseNumber(u2).parse("4"));
+    expectError(error.NoValue, ParseNumber(u8).parse("256"));
 }
 
 test "ParseNumber.non-u8-sizes" {
     if (!DBG and !DBG1) {
         // Only test if DBG and DBG1 are both false as u0/u1 can't be printed
-        assert((try ParseNumber(u0).parse("0")) == 0);
+        expect((try ParseNumber(u0).parse("0")) == 0);
 
         const parseI1 = ParseNumber(i1).parse;
-        assert((try parseI1("0")) == 0);
-        assert((try parseI1("-1")) == -1);
+        expect((try parseI1("0")) == 0);
+        expect((try parseI1("-1")) == -1);
     }
 
-
     const parseU1 = ParseNumber(u1).parse;
-    assert((try parseU1("0")) == 0);
-    assert((try parseU1("1")) == 1);
+    expect((try parseU1("0")) == 0);
+    expect((try parseU1("1")) == 1);
 
     const parseU2 = ParseNumber(u2).parse;
-    assert((try parseU2("0")) == 0);
-    assert((try parseU2("1")) == 1);
-    assert((try parseU2("2")) == 2);
-    assert((try parseU2("3")) == 3);
+    expect((try parseU2("0")) == 0);
+    expect((try parseU2("1")) == 1);
+    expect((try parseU2("2")) == 2);
+    expect((try parseU2("3")) == 3);
 
-    assert((try ParseNumber(u127).parse("12345678901234567890")) == u127(12345678901234567890));
-    assert((try ParseNumber(i127).parse("-12345678901234567890")) == i127(-12345678901234567890));
+    expect((try ParseNumber(u127).parse("12345678901234567890")) == u127(12345678901234567890));
+    expect((try ParseNumber(i127).parse("-12345678901234567890")) == i127(-12345678901234567890));
 }
 
 test "ParseNumber.parseF32" {
     const parseF32 = ParseNumber(f32).parse;
     var vf32 = try parseF32("123.e4");
-    assert(vf32 == f32(123e4));
+    expect(vf32 == f32(123e4));
 }
 
 test "ParseNumber.leading.zeros" {
     const parseF32 = ParseNumber(f32).parse;
-    assert((try parseF32("01")) == 1);
-    assert((try parseF32("001.001e001")) == 1.001e001);
-    assert((try parseF32("-01")) == -1);
-    assert((try parseF32("-001.001e-001")) == -1.001e-001);
+    expect((try parseF32("01")) == 1);
+    expect((try parseF32("001.001e001")) == 1.001e001);
+    expect((try parseF32("-01")) == -1);
+    expect((try parseF32("-001.001e-001")) == -1.001e-001);
 }
 
 test "ParseNumber.no.leading.digit" {
     // TODO: Should we allow this
     const parseF32 = ParseNumber(f32).parse;
-    // assert((try parseF32("0.1")) == f32(.1)); // Zig compiler error
-    assertError(parseF32(".1"), error.NoValue);
-    assertError(parseF32("-.1"), error.NoValue);
+    // expect((try parseF32("0.1")) == f32(.1)); // Zig compiler error
+    expectError(error.NoValue, parseF32(".1"));
+    expectError(error.NoValue, parseF32("-.1"));
 }
 
 test "ParseNumber.trailing.decimal" {
     const parseF32 = ParseNumber(f32).parse;
-    assert((try parseF32("0.")) == f32(0.));
-    assert((try parseF32("-0.")) == f32(-0.));
-    assert((try parseF32("1.")) == f32(1.));
-    assert((try parseF32("-1.")) == f32(-1.));
+    expect((try parseF32("0.")) == f32(0.));
+    expect((try parseF32("-0.")) == f32(-0.));
+    expect((try parseF32("1.")) == f32(1.));
+    expect((try parseF32("-1.")) == f32(-1.));
 }
